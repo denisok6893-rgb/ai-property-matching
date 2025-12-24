@@ -92,6 +92,10 @@ type PropertiesListResponse struct {
 }
 
 func (s *Server) handlePropertiesList(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handlePropertiesCreate(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -152,6 +156,57 @@ func (s *Server) handlePropertiesGetByID(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
 }
+type CreatePropertyRequest struct {
+	Title     string          `json:"title"`
+	Location  string          `json:"location"`
+	Price     float64         `json:"price"`
+	Bedrooms  int             `json:"bedrooms"`
+	Bathrooms int             `json:"bathrooms"`
+	AreaSQM   float64         `json:"area_sqm"`
+	Amenities []string        `json:"amenities"`
+	Features  domain.Features `json:"features"`
+}
+
+func (s *Server) handlePropertiesCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CreatePropertyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// minimal validation
+	if req.Title == "" || req.Location == "" {
+		http.Error(w, "title and location are required", http.StatusBadRequest)
+		return
+	}
+	if req.Price <= 0 {
+		http.Error(w, "price must be > 0", http.StatusBadRequest)
+		return
+	}
+
+	id := "p-" + strconv.FormatInt(int64(len(s.Properties)+1), 10)
+
+	p := domain.Property{
+		ID:        id,
+		Title:     req.Title,
+		Location:  req.Location,
+		Price:     req.Price,
+		Bedrooms:  req.Bedrooms,
+		Bathrooms: req.Bathrooms,
+		AreaSQM:   req.AreaSQM,
+		Amenities: req.Amenities,
+		Features:  req.Features,
+	}
+
+	s.Properties = append(s.Properties, p)
+	writeJSON(w, http.StatusCreated, p)
+}
+
 
 func parseLimitOffset(r *http.Request, defLimit, defOffset int) (int, int) {
 	q := r.URL.Query()
