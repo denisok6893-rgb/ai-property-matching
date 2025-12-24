@@ -1,0 +1,24 @@
+[
+  {
+    "id": "es-001",
+    "title": "Sunny family apartment in Valencia",
+    "location": "Valencia",
+    "price": 320000,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "area_sqm": 110,
+    "amenities": ["balcony", "storage", "parking"],
+    "features": {
+      "quietness": 0.6,
+      "sun_exposure": 0.85,
+      "wind_protection": 0.55,
+      "tourism_intensity": 0.3,
+      "family_friendly": 0.82,
+      "expat_friendly": 0.7,
+      "investment_potential": 0.62,
+      "distance_to_sea_km": 1.5,
+      "walkability": 0.8,
+      "green_areas": 0.6
+    }
+  }
+]

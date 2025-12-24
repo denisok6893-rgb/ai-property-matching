@@ -1,0 +1,12 @@
+{
+  "quietness": 1.0,
+  "sun_exposure": 0.9,
+  "wind_protection": 0.6,
+  "low_tourism": 1.0,
+  "family_friendliness": 0.9,
+  "expat_community": 0.7,
+  "investment_focus": 0.85,
+  "walkability": 0.7,
+  "green_areas": 0.6,
+  "sea_proximity": 0.8
+}
