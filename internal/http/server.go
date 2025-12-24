@@ -22,6 +22,8 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/match", s.handleMatch)
+        mux.HandleFunc("/properties", s.handlePropertiesList)
+        mux.HandleFunc("/properties/", s.handlePropertiesGetByID)
 	return mux
 }
 
@@ -67,4 +69,122 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(MatchResponse{Results: results}); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 	}
+}
+
+// ---- Properties API (read-only v1) ----
+
+type PropertySummary struct {
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Location  string  `json:"location"`
+	Price     float64 `json:"price"`
+	Bedrooms  int     `json:"bedrooms"`
+	Bathrooms int     `json:"bathrooms"`
+	AreaSQM   float64 `json:"area_sqm"`
+	Amenities []string `json:"amenities,omitempty"`
+}
+
+type PropertiesListResponse struct {
+	Limit  int               `json:"limit"`
+	Offset int               `json:"offset"`
+	Total  int               `json:"total"`
+	Items  []PropertySummary `json:"items"`
+}
+
+func (s *Server) handlePropertiesList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	limit, offset := parseLimitOffset(r, 20, 0)
+
+	total := len(s.Properties)
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+
+	items := make([]PropertySummary, 0, end-offset)
+	for _, p := range s.Properties[offset:end] {
+		items = append(items, PropertySummary{
+			ID:        p.ID,
+			Title:     p.Title,
+			Location:  p.Location,
+			Price:     p.Price,
+			Bedrooms:  p.Bedrooms,
+			Bathrooms: p.Bathrooms,
+			AreaSQM:   p.AreaSQM,
+			Amenities: p.Amenities,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, PropertiesListResponse{
+		Limit:  limit,
+		Offset: offset,
+		Total:  total,
+		Items:  items,
+	})
+}
+
+func (s *Server) handlePropertiesGetByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Path looks like: /properties/{id}
+	id := r.URL.Path[len("/properties/"):]
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing_id"})
+		return
+	}
+
+	for _, p := range s.Properties {
+		if p.ID == id {
+			writeJSON(w, http.StatusOK, p)
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+}
+
+func parseLimitOffset(r *http.Request, defLimit, defOffset int) (int, int) {
+	q := r.URL.Query()
+
+	limit := defLimit
+	if v := q.Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			limit = parsed
+		}
+	}
+	if limit <= 0 {
+		limit = defLimit
+	}
+	// safety cap
+	if limit > 200 {
+		limit = 200
+	}
+
+	offset := defOffset
+	if v := q.Get("offset"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			offset = parsed
+		}
+	}
+	if offset < 0 {
+		offset = defOffset
+	}
+
+	return limit, offset
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }
