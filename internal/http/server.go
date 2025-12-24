@@ -135,27 +135,41 @@ func (s *Server) handlePropertiesList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePropertiesGetByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Path looks like: /properties/{id}
 	id := r.URL.Path[len("/properties/"):]
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing_id"})
 		return
 	}
 
-	for _, p := range s.Properties {
-		if p.ID == id {
-			writeJSON(w, http.StatusOK, p)
-			return
+	switch r.Method {
+	case http.MethodGet:
+		for _, p := range s.Properties {
+			if p.ID == id {
+				writeJSON(w, http.StatusOK, p)
+				return
+			}
 		}
-	}
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		return
 
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+	case http.MethodDelete:
+		for i, p := range s.Properties {
+			if p.ID == id {
+				// remove element by index
+				s.Properties = append(s.Properties[:i], s.Properties[i+1:]...)
+				writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		return
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 }
+
 type CreatePropertyRequest struct {
 	Title     string          `json:"title"`
 	Location  string          `json:"location"`
