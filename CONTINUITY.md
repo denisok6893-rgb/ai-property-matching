@@ -26,3 +26,6 @@
 Слелано 31.12.25
 - Проверен `POST /match` с реальным `ClientProfile`, получен результат со `score` и `reasons`.
 - README обновлён: добавлен реальный пример запроса/ответа `/match`.
+-Учтён location_preference как soft-boost (location_match в reasons).
+
+Проверено вручную через /match на порту :8081.
