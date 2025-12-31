@@ -36,6 +36,8 @@ type Property struct {
 	Bedrooms  int      `json:"bedrooms"`
 	Bathrooms int      `json:"bathrooms"`
 	AreaSQM   float64  `json:"area_sqm"`
+      	Description string   `json:"description"`
+	ImageURLs   []string `json:"image_urls"`
 	Amenities []string `json:"amenities"`
 	Features  Features `json:"features"`
 }

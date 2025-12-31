@@ -22,8 +22,9 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/match", s.handleMatch)
-        mux.HandleFunc("/properties", s.handlePropertiesList)
-        mux.HandleFunc("/properties/", s.handlePropertiesGetByID)
+	mux.HandleFunc("/demo", s.handleDemo)
+	mux.HandleFunc("/properties", s.handlePropertiesList)
+	mux.HandleFunc("/properties/", s.handlePropertiesGetByID)
 	return mux
 }
 
@@ -177,6 +178,8 @@ type CreatePropertyRequest struct {
 	Bedrooms  int             `json:"bedrooms"`
 	Bathrooms int             `json:"bathrooms"`
 	AreaSQM   float64         `json:"area_sqm"`
+       	Description string   `json:"description"`
+	ImageURLs   []string `json:"image_urls"`
 	Amenities []string        `json:"amenities"`
 	Features  domain.Features `json:"features"`
 }
@@ -213,7 +216,9 @@ func (s *Server) handlePropertiesCreate(w http.ResponseWriter, r *http.Request) 
 		Bedrooms:  req.Bedrooms,
 		Bathrooms: req.Bathrooms,
 		AreaSQM:   req.AreaSQM,
-		Amenities: req.Amenities,
+		Description: req.Description,
+                ImageURLs:   req.ImageURLs,
+                Amenities: req.Amenities,
 		Features:  req.Features,
 	}
 
@@ -256,4 +261,112 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (s *Server) handleDemo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	html := `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>ai-property-matching — demo</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+    textarea { width: 100%; min-height: 260px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    button { padding: 10px 14px; font-size: 16px; }
+    pre { white-space: pre-wrap; word-wrap: break-word; background: #f6f6f6; padding: 12px; border-radius: 8px; }
+    .row { display: grid; gap: 12px; }
+  </style>
+</head>
+<body>
+  <h2>ai-property-matching — demo</h2>
+  <p>Страница шлёт <code>POST /match</code> и показывает ответ. Сервер: <code>` + r.Host + `</code></p>
+
+  <div class="row">
+    <div>
+      <div><b>Запрос (JSON)</b></div>
+      <textarea id="payload"></textarea>
+      <div style="margin-top:10px;">
+        <button id="btn">Match</button>
+        <button id="btnProps" style="margin-left:8px;">List properties</button>
+      </div>
+    </div>
+
+    <div>
+      <div><b>Ответ</b></div>
+      <pre id="out">Нажми Match…</pre>
+    </div>
+  </div>
+
+<script>
+const defaultPayload = {
+  profile: {
+    name: "Demo",
+    location_preference: "Valencia",
+    budget_min: 200000,
+    budget_max: 400000,
+    desired_bedrooms: 3,
+    desired_bathrooms: 2,
+    priorities: {
+      quietness: 0.3,
+      sun_exposure: 0.2,
+      wind_protection: 0.0,
+      low_tourism: 0.1,
+      family_friendliness: 0.1,
+      expat_community: 0.0,
+      investment_focus: 0.1,
+      walkability: 0.1,
+      green_areas: 0.1,
+      sea_proximity: 0.0
+    },
+    hard_filters: { must_have_amenities: ["parking"] }
+  },
+  limit: 5
+};
+
+const ta = document.getElementById("payload");
+const out = document.getElementById("out");
+ta.value = JSON.stringify(defaultPayload, null, 2);
+
+document.getElementById("btn").addEventListener("click", async () => {
+  out.textContent = "Запрос...";
+  let payload;
+  try { payload = JSON.parse(ta.value); } catch(e) {
+    out.textContent = "Ошибка JSON: " + e.message;
+    return;
+  }
+  try {
+    const res = await fetch("/match", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    out.textContent = text;
+  } catch (e) {
+    out.textContent = "Ошибка запроса: " + e.message;
+  }
+});
+
+document.getElementById("btnProps").addEventListener("click", async () => {
+  out.textContent = "Запрос...";
+  try {
+    const res = await fetch("/properties?limit=20&offset=0");
+    const text = await res.text();
+    out.textContent = text;
+  } catch (e) {
+    out.textContent = "Ошибка запроса: " + e.message;
+  }
+});
+</script>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(html))
 }
