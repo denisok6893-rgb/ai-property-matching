@@ -42,7 +42,10 @@ curl -sS -X POST http://localhost:8080/properties \
     "area_sqm": 54.5,
     "amenities": ["parking","elevator"],
     "features": {}
+    description
+    image_urls
   }'; echo
+
 Пример ответа (id генерируется как p-N):
 
 {"id":"p-2","title":"Test flat","location":"Simferopol","price":6500000,"bedrooms":2,"bathrooms":1,"area_sqm":54.5,"amenities":["parking","elevator"],"features":{"quietness":0,"sun_exposure":0,"wind_protection":0,"tourism_intensity":0,"family_friendly":0,"expat_friendly":0,"investment_potential":0,"distance_to_sea_km":0,"walkability":0,"green_areas":0}}
