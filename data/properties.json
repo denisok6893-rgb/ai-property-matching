@@ -7,6 +7,11 @@
     "bedrooms": 3,
     "bathrooms": 2,
     "area_sqm": 110,
+    "description": "Family apartment in Valencia. Good light, balcony, parking.",
+    "image_urls": [
+      "https://picsum.photos/seed/valencia1/900/600",
+      "https://picsum.photos/seed/valencia2/900/600"
+    ],
     "amenities": ["balcony", "storage", "parking"],
     "features": {
       "quietness": 0.6,
