@@ -311,12 +311,35 @@ func (s *Server) handleDemo(w http.ResponseWriter, r *http.Request) {
       </div>
 
       <div class="card">
-        <div><b>Запрос (JSON) → POST /match</b></div>
-        <textarea id="payload"></textarea>
+        <div><b>Профиль клиента → POST /match</b></div>
+
+        <div class="row" style="margin-top:10px;">
+          <label class="muted">Локация</label>
+          <input id="fLoc" placeholder="например Valencia" value="Valencia"/>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <label class="muted">Бюджет min</label>
+          <input id="fMin" type="number" value="200000"/>
+          <label class="muted">Бюджет max</label>
+          <input id="fMax" type="number" value="400000"/>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <label class="muted">Amenities (через запятую)</label>
+          <input id="fAms" placeholder="parking, elevator" value="parking"/>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <label class="muted">Приоритет: тишина (0..1)</label>
+          <input id="fQuiet" type="number" step="0.1" min="0" max="1" value="0.3"/>
+        </div>
+
         <div style="margin-top:10px;">
           <button id="btnMatch">Match</button>
         </div>
-      </div>
+
+        <textarea id="payload" style="display:none;"></textarea>
 
       <div class="card">
         <div><b>Список объектов (GET /properties)</b></div>
@@ -332,8 +355,10 @@ func (s *Server) handleDemo(w http.ResponseWriter, r *http.Request) {
       </div>
 
       <div class="card">
-        <div><b>Ответ /match</b></div>
-        <pre id="out">Нажми Match…</pre>
+        <div><b>Результат подбора</b></div>
+        <div id="summary" class="muted" style="margin-top:8px;">Нажми Match…</div>
+        <div id="results" class="list" style="margin-top:10px;"></div>
+        <pre id="out" style="display:none;"></pre>
       </div>
     </div>
   </div>
@@ -366,6 +391,8 @@ const defaultPayload = {
 
 const ta = document.getElementById("payload");
 const out = document.getElementById("out");
+const summaryEl = document.getElementById("summary");
+const resultsEl = document.getElementById("results");
 const listEl = document.getElementById("list");
 const detailsEl = document.getElementById("details");
 const imagesEl = document.getElementById("images");
@@ -465,23 +492,116 @@ document.getElementById("btnDetails").addEventListener("click", async () => {
   await loadDetails(id);
 });
 
+function parseAmenities(s) {
+  if (!s) return [];
+  return s.split(",").map(x => x.trim()).filter(Boolean);
+}
+
+function buildPayloadFromForm() {
+  const loc = (document.getElementById("fLoc").value || "").trim();
+  const budgetMin = Number(document.getElementById("fMin").value || 0);
+  const budgetMax = Number(document.getElementById("fMax").value || 0);
+  const ams = parseAmenities(document.getElementById("fAms").value || "");
+  const quiet = Number(document.getElementById("fQuiet").value || 0);
+
+  const payload = {
+    profile: {
+      name: "Demo",
+      location_preference: loc,
+      budget_min: budgetMin,
+      budget_max: budgetMax,
+      desired_bedrooms: 0,
+      desired_bathrooms: 0,
+      priorities: {
+        quietness: quiet,
+        sun_exposure: 0,
+        wind_protection: 0,
+        low_tourism: 0,
+        family_friendliness: 0,
+        expat_community: 0,
+        investment_focus: 0,
+        walkability: 0,
+        green_areas: 0,
+        sea_proximity: 0
+      },
+      hard_filters: {
+        must_have_amenities: ams
+      }
+    },
+    limit: 5
+  };
+
+  return payload;
+}
+
 document.getElementById("btnMatch").addEventListener("click", async () => {
   out.textContent = "Запрос...";
-  let payload;
-  try { payload = JSON.parse(ta.value); } catch(e) {
-    out.textContent = "Ошибка JSON: " + e.message;
-    return;
-  }
   try {
+    const payload = buildPayloadFromForm();
+    ta.value = JSON.stringify(payload, null, 2);
+
     const res = await fetch("/match", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(payload)
     });
     const text = await res.text();
-    out.textContent = text;
+    out.textContent = text; // оставим скрытым, на всякий случай
+
+    let data;
+    try { data = JSON.parse(text); } catch(e) {
+      summaryEl.textContent = "Ошибка: ответ не JSON";
+      resultsEl.innerHTML = "<div class='muted'>" + text + "</div>";
+      return;
+    }
+
+    const results = (data && data.results) ? data.results : [];
+    if (results.length === 0) {
+      summaryEl.textContent = "Ничего не найдено по условиям.";
+      resultsEl.innerHTML = "";
+      return;
+    }
+
+    summaryEl.textContent = "Найдено: " + results.length;
+
+    function badge(score) {
+      if (score >= 90) return "IDEAL (≥90)";
+      if (score >= 75) return "STRONG (≥75)";
+      if (score >= 60) return "GOOD (≥60)";
+      return "WEAK (<60)";
+    }
+
+    resultsEl.innerHTML = "";
+    for (const r of results) {
+      const p = r.property || {};
+      const sc = typeof r.score === "number" ? r.score : 0;
+      const reasons = Array.isArray(r.reasons) ? r.reasons : [];
+
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML =
+        "<div class='row' style='justify-content:space-between;'>" +
+          "<div><b>" + (p.title || "") + "</b></div>" +
+          "<div><b>" + sc + "</b> • <span class='muted'>" + badge(sc) + "</span></div>" +
+        "</div>" +
+        "<div class='muted'>ID: <code>" + (p.id || "") + "</code> • " + (p.location || "") + " • " + money(p.price) + "</div>" +
+        (p.description ? "<div style='margin-top:6px;'>" + p.description + "</div>" : "") +
+        "<div class='muted' style='margin-top:8px;'><b>Почему подходит:</b></div>" +
+        "<div class='muted'>" + reasons.map(x => "• " + x.message).join("<br/>") + "</div>";
+
+      // по клику сразу открываем детали справа
+      div.addEventListener("click", async () => {
+        if (p.id) {
+          idInput.value = p.id;
+          await loadDetails(p.id);
+        }
+      });
+
+      resultsEl.appendChild(div);
+    }
+
   } catch (e) {
-    out.textContent = "Ошибка запроса: " + e.message;
+    out.textContent = "Ошибка: " + e.message;
   }
 });
 
