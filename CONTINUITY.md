@@ -29,3 +29,5 @@
 -Учтён location_preference как soft-boost (location_match в reasons).
 
 Проверено вручную через /match на порту :8081.
+Добавлен /demo: список объектов, детали по клику, отображение description и image_urls.
+
