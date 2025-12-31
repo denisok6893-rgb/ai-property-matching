@@ -136,6 +136,27 @@ func (e *Engine) scoreOne(profile domain.ClientProfile, p domain.Property) (floa
 		})
 	}
 
+       	// Soft nudge: location preference (if set). Adds up to 0.05 of total.
+	if strings.TrimSpace(profile.LocationPreference) != "" && sumW > 0 {
+		want := strings.ToLower(strings.TrimSpace(profile.LocationPreference))
+		have := strings.ToLower(strings.TrimSpace(p.Location))
+
+		match01 := 0.0
+		if want != "" && have != "" && strings.Contains(have, want) {
+			match01 = 1.0
+		}
+
+		w := 0.05 * sumW
+		sumW += w
+		sum += w * match01
+
+		contributions = append(contributions, domain.ScoreReason{
+			Type:    "location_match",
+			Message: reasonMessage("location preference", match01),
+			Impact:  w * match01,
+		})
+	}
+
 	// If no weights are active, score is neutral 50.
 	if sumW <= 0 {
 		return 50.0, topReasons(contributions, 5)
