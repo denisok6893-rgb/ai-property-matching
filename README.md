@@ -1,136 +1,86 @@
-# ai-property-matching
-MVP AI Property Matching Platform (learning project)
-# ai-property-matching
+# ai-property-matching (MVP v0)
 
-AI-powered property matching engine (MVP).
+HTTP-сервис на Go для подбора объектов недвижимости под профиль клиента и базового управления объектами (in-memory).
 
-Проект предназначен для подбора объектов недвижимости под требования пользователя
-на основе комбинации жёстких фильтров и скоринговой модели с объяснениями причин.
+## Требования
+- Go
 
-## Status
+## Запуск
 
-**MVP v0**
+По умолчанию слушает `:8080`.
 
-Проект:
-- собирается
-- запускается
-- покрыт базовыми тестами
-- зафиксирован в GitHub
+```bash
+go run ./cmd/api
 
-Источник истины — репозиторий, не чат.
+Переопределение адреса/портов и путей:
+API_ADDRESS=:8083 PROPERTIES_PATH=data/properties.json WEIGHTS_PATH=configs/weights.json go run ./cmd/api
 
----
+Health
+curl -sS http://localhost:8080/health; echo
 
-## Tech Stack
+Ответ:
 
-- Language: Go
-- Runtime: Go 1.25.4
-- Environment: Termux (Android)
-- Storage: JSON (mock data)
-- API: HTTP (net/http)
+{"status":"ok"}
 
----
+Properties API (in-memory)
+Список (GET /properties)
+curl -sS "http://localhost:8080/properties?limit=5&offset=0"; echo
 
-## Project Structure
+Пример ответа:
 
-.
-├── cmd/api/ # Entry point (HTTP API)
-├── internal/
-│ ├── domain/ # Domain models
-│ ├── matching/ # Matching engine
-│ └── storage/ # Data loading layer
-├── configs/
-│ └── weights.json # Matching weights configuration
-├── data/
-│ └── properties.json # Mock property data
-├── go.mod
-└── README.md
+{"limit":5,"offset":0,"total":1,"items":[{"id":"es-001","title":"Sunny family apartment in Valencia","location":"Valencia","price":320000,"bedrooms":3,"bathrooms":2,"area_sqm":110,"amenities":["balcony","storage","parking"]}]}
 
----
+Создать (POST /properties)
+curl -sS -X POST http://localhost:8080/properties \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Test flat",
+    "location": "Simferopol",
+    "price": 6500000,
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "area_sqm": 54.5,
+    "amenities": ["parking","elevator"],
+    "features": {}
+  }'; echo
+Пример ответа (id генерируется как p-N):
 
-## Matching Engine
+{"id":"p-2","title":"Test flat","location":"Simferopol","price":6500000,"bedrooms":2,"bathrooms":1,"area_sqm":54.5,"amenities":["parking","elevator"],"features":{"quietness":0,"sun_exposure":0,"wind_protection":0,"tourism_intensity":0,"family_friendly":0,"expat_friendly":0,"investment_potential":0,"distance_to_sea_km":0,"walkability":0,"green_areas":0}}
 
-### Hard filters
-Объект отбрасывается, если не проходит:
-- бюджет
-- обязательные amenities
+Получить по id (GET /properties/{id})
+curl -sS http://localhost:8080/properties/es-001; echo
 
-### Soft scoring
-Для подходящих объектов считается score (0–100) с учётом:
-- весов из `configs/weights.json`
-- частичного соответствия параметрам
+Удалить (DELETE /properties/{id})
+curl -sS -X DELETE http://localhost:8080/properties/p-2; echo
+Ответ:
 
-### Explainability
-Каждый результат содержит:
-- итоговый score
-- список причин (`reasons`), объясняющих расчёт
+{"status":"deleted"}
 
----
 
-## HTTP API
+Проверка:
 
-### Health check
+curl -sS http://localhost:8080/properties/p-2; echo
 
-GET /health
 
-Response:
-```json
-{
-  "status": "ok"
-}
+Ответ:
 
-Property matching
+{"error":"not_found"}
+Match API
+
 POST /match
 
-Request (пример):
-{
-  "budget": 5000000,
-  "amenities": ["balcony", "parking"]
-}
+curl -sS -X POST http://localhost:8080/match \
+  -H "Content-Type: application/json" \
+  -d '{
+    "profile": {},
+    "limit": 5
+  }'; echo
 
-Response (пример):
-{
-  "matches": [
-    {
-      "property_id": "p1",
-      "score": 87,
-      "reasons": [
-        "budget fits",
-        "has parking",
-        "partial amenities match"
-      ]
-    }
-  ]
-}
-
-Run locally
+Тесты
 go test ./...
-go run ./cmd/api
-По умолчанию сервер стартует локально и готов принимать HTTP-запросы.
 
-Design Principles
+Данные и конфигурация
 
-Простота важнее абстракций
+data/properties.json — мок-объекты
 
-Объяснимость важнее «магии»
-
-Каждое изменение — отдельный коммит
-
-MVP сначала, расширение потом
-
-Backward compatibility по возможности
-
-Roadmap (high-level)
-
-Pagination и список объектов недвижимости
-
-CRUD для объектов (properties)
-
-Улучшение matching-алгоритма
-
-Внешний интерфейс (Web / Telegram)
-
-Все шаги реализуются итеративно и фиксируются в GitHub.
-
-
-
+configs/weights.json — веса факторов скоринга
