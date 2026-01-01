@@ -69,3 +69,6 @@
 - curl -i "http://127.0.0.1:8083/properties?limit=-1"
 - curl -i "http://127.0.0.1:8083/properties?min_price=10&max_price=1"
 
+## 2026-01-01 — README ready for delivery
+
+- README.md переписан: быстрый старт (memory/sqlite), ENV, примеры curl для /health, /properties (фильтры/сортировка), примеры 400-валидации, POST/GET/DELETE и /match.
