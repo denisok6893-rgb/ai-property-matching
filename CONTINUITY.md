@@ -31,3 +31,24 @@
 Проверено вручную через /match на порту :8081.
 Добавлен /demo: список объектов, детали по клику, отображение description и image_urls.
 
+Последние изменения:
+
+## 2026-01-01 — Properties: repo abstraction + SQLite фильтры
+
+- В `internal/http` введён интерфейс `PropertiesRepo`; текущая логика сохранена как `InMemoryPropertiesRepo` (фильтр → сортировка → пагинация).
+- Добавлен `SQLitePropertiesRepo` и подключение в `cmd/api/main.go` при `STORAGE=sqlite`.
+- В `internal/storage/sqlite_store.go` добавлен `ListPropertiesFiltered()`:
+  - WHERE: location (contains, case-insensitive), min_price, max_price, min_bedrooms
+  - ORDER BY: price_asc|price_desc
+  - LIMIT/OFFSET + COUNT(*) с тем же WHERE
+- `GET /properties` в sqlite-режиме теперь читает из БД, а не из in-memory `props`.
+- Добавлен тест `internal/http/server_properties_sql_test.go` на фильтры/сортировку.
+
+Команды проверки:
+- go test ./...
+- API_ADDRESS=:8083 STORAGE=sqlite DB_PATH=./data/app.db PROPERTIES_PATH=./data/properties.json go run ./cmd/api
+- curl "http://127.0.0.1:8083/properties?location=valencia"
+- curl "http://127.0.0.1:8083/properties?min_price=400000"
+- curl "http://127.0.0.1:8083/properties?min_bedrooms=4&sort=price_desc"
+
+
