@@ -29,29 +29,19 @@ func main() {
 
 	switch cfg.Storage {
 	case "sqlite":
+
 		store, err := storage.OpenSQLite(cfg.DBPath)
 		if err != nil {
 			log.Fatalf("open sqlite: %v", err)
 		}
 
-		n, err := store.CountProperties()
+		if err := store.EnsureSchema(); err != nil {
+			log.Fatalf("sqlite schema: %v", err)
+		}
+
+		_, err = store.CountProperties()
 		if err != nil {
 			log.Fatalf("sqlite count: %v", err)
-		}
-
-		if n == 0 {
-			seed, err := storage.LoadPropertiesFromFile(cfg.PropertiesPath)
-			if err != nil {
-				log.Fatalf("seed load: %v", err)
-			}
-			if err := store.UpsertMany(seed); err != nil {
-				log.Fatalf("seed upsert: %v", err)
-			}
-		}
-
-		props, _, err = store.ListProperties(200, 0)
-		if err != nil {
-			log.Fatalf("sqlite list: %v", err)
 		}
 
 	default: // memory
