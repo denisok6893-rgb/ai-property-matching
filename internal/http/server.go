@@ -3,7 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/denisok6893-rgb/ai-property-matching/internal/domain"
 	"github.com/denisok6893-rgb/ai-property-matching/internal/matching"
@@ -75,13 +77,13 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 // ---- Properties API (read-only v1) ----
 
 type PropertySummary struct {
-	ID        string  `json:"id"`
-	Title     string  `json:"title"`
-	Location  string  `json:"location"`
-	Price     float64 `json:"price"`
-	Bedrooms  int     `json:"bedrooms"`
-	Bathrooms int     `json:"bathrooms"`
-	AreaSQM   float64 `json:"area_sqm"`
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Location  string   `json:"location"`
+	Price     float64  `json:"price"`
+	Bedrooms  int      `json:"bedrooms"`
+	Bathrooms int      `json:"bathrooms"`
+	AreaSQM   float64  `json:"area_sqm"`
 	Amenities []string `json:"amenities,omitempty"`
 }
 
@@ -104,7 +106,46 @@ func (s *Server) handlePropertiesList(w http.ResponseWriter, r *http.Request) {
 
 	limit, offset := parseLimitOffset(r, 20, 0)
 
-	total := len(s.Properties)
+	q := r.URL.Query()
+
+	location := strings.ToLower(q.Get("location"))
+	minPrice, _ := strconv.ParseFloat(q.Get("min_price"), 64)
+	maxPrice, _ := strconv.ParseFloat(q.Get("max_price"), 64)
+	minBedrooms, _ := strconv.Atoi(q.Get("min_bedrooms"))
+	sortBy := q.Get("sort")
+
+	// 1. FILTER
+	filtered := make([]domain.Property, 0, len(s.Properties))
+	for _, p := range s.Properties {
+		if location != "" && !strings.Contains(strings.ToLower(p.Location), location) {
+			continue
+		}
+		if minPrice > 0 && p.Price < minPrice {
+			continue
+		}
+		if maxPrice > 0 && p.Price > maxPrice {
+			continue
+		}
+		if minBedrooms > 0 && p.Bedrooms < minBedrooms {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+
+	// 2. SORT
+	switch sortBy {
+	case "price_asc":
+		sort.Slice(filtered, func(i, j int) bool {
+			return filtered[i].Price < filtered[j].Price
+		})
+	case "price_desc":
+		sort.Slice(filtered, func(i, j int) bool {
+			return filtered[i].Price > filtered[j].Price
+		})
+	}
+
+	// 3. PAGINATION
+	total := len(filtered)
 	if offset > total {
 		offset = total
 	}
@@ -114,7 +155,7 @@ func (s *Server) handlePropertiesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	items := make([]PropertySummary, 0, end-offset)
-	for _, p := range s.Properties[offset:end] {
+	for _, p := range filtered[offset:end] {
 		items = append(items, PropertySummary{
 			ID:        p.ID,
 			Title:     p.Title,
@@ -172,16 +213,16 @@ func (s *Server) handlePropertiesGetByID(w http.ResponseWriter, r *http.Request)
 }
 
 type CreatePropertyRequest struct {
-	Title     string          `json:"title"`
-	Location  string          `json:"location"`
-	Price     float64         `json:"price"`
-	Bedrooms  int             `json:"bedrooms"`
-	Bathrooms int             `json:"bathrooms"`
-	AreaSQM   float64         `json:"area_sqm"`
-       	Description string   `json:"description"`
-	ImageURLs   []string `json:"image_urls"`
-	Amenities []string        `json:"amenities"`
-	Features  domain.Features `json:"features"`
+	Title       string          `json:"title"`
+	Location    string          `json:"location"`
+	Price       float64         `json:"price"`
+	Bedrooms    int             `json:"bedrooms"`
+	Bathrooms   int             `json:"bathrooms"`
+	AreaSQM     float64         `json:"area_sqm"`
+	Description string          `json:"description"`
+	ImageURLs   []string        `json:"image_urls"`
+	Amenities   []string        `json:"amenities"`
+	Features    domain.Features `json:"features"`
 }
 
 func (s *Server) handlePropertiesCreate(w http.ResponseWriter, r *http.Request) {
@@ -209,23 +250,22 @@ func (s *Server) handlePropertiesCreate(w http.ResponseWriter, r *http.Request) 
 	id := "p-" + strconv.FormatInt(int64(len(s.Properties)+1), 10)
 
 	p := domain.Property{
-		ID:        id,
-		Title:     req.Title,
-		Location:  req.Location,
-		Price:     req.Price,
-		Bedrooms:  req.Bedrooms,
-		Bathrooms: req.Bathrooms,
-		AreaSQM:   req.AreaSQM,
+		ID:          id,
+		Title:       req.Title,
+		Location:    req.Location,
+		Price:       req.Price,
+		Bedrooms:    req.Bedrooms,
+		Bathrooms:   req.Bathrooms,
+		AreaSQM:     req.AreaSQM,
 		Description: req.Description,
-                ImageURLs:   req.ImageURLs,
-                Amenities: req.Amenities,
-		Features:  req.Features,
+		ImageURLs:   req.ImageURLs,
+		Amenities:   req.Amenities,
+		Features:    req.Features,
 	}
 
 	s.Properties = append(s.Properties, p)
 	writeJSON(w, http.StatusCreated, p)
 }
-
 
 func parseLimitOffset(r *http.Request, defLimit, defOffset int) (int, int) {
 	q := r.URL.Query()
