@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+        "strings"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -198,4 +199,96 @@ LIMIT ? OFFSET ?
 		out = append(out, p)
 	}
 	return out, total, rows.Err()
+}
+
+func (s *SQLiteStore) ListPropertiesFiltered(
+	limit, offset int,
+	location string,
+	minPrice, maxPrice float64,
+	minBedrooms int,
+	sortBy string,
+) ([]domain.Property, int, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// WHERE builder
+	where := make([]string, 0, 4)
+	args := make([]any, 0, 8)
+
+	if strings.TrimSpace(location) != "" {
+		// contains, case-insensitive
+		where = append(where, "LOWER(location) LIKE '%' || LOWER(?) || '%'")
+		args = append(args, location)
+	}
+	if minPrice > 0 {
+		where = append(where, "price >= ?")
+		args = append(args, minPrice)
+	}
+	if maxPrice > 0 {
+		where = append(where, "price <= ?")
+		args = append(args, maxPrice)
+	}
+	if minBedrooms > 0 {
+		where = append(where, "bedrooms >= ?")
+		args = append(args, minBedrooms)
+	}
+
+	whereSQL := ""
+	if len(where) > 0 {
+		whereSQL = "WHERE " + strings.Join(where, " AND ")
+	}
+
+	orderSQL := "ORDER BY id"
+	switch sortBy {
+	case "price_asc":
+		orderSQL = "ORDER BY price ASC"
+	case "price_desc":
+		orderSQL = "ORDER BY price DESC"
+	}
+
+	// total count with same WHERE
+	countSQL := "SELECT COUNT(*) FROM properties " + whereSQL
+	var total int
+	if err := s.db.QueryRow(countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// rows
+	rowsSQL := `
+SELECT id, title, location, price, bedrooms, bathrooms, area_sqm, description, image_urls_json, amenities_json, features_json
+FROM properties
+` + whereSQL + "\n" + orderSQL + "\nLIMIT ? OFFSET ?"
+
+	rowsArgs := append(append([]any{}, args...), limit, offset)
+
+	rows, err := s.db.Query(rowsSQL, rowsArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var out []domain.Property
+	for rows.Next() {
+		var p domain.Property
+		var imgJSON, amJSON, ftJSON string
+		if err := rows.Scan(
+			&p.ID, &p.Title, &p.Location, &p.Price, &p.Bedrooms, &p.Bathrooms, &p.AreaSQM,
+			&p.Description, &imgJSON, &amJSON, &ftJSON,
+		); err != nil {
+			return nil, 0, err
+		}
+		_ = json.Unmarshal([]byte(imgJSON), &p.ImageURLs)
+		_ = json.Unmarshal([]byte(amJSON), &p.Amenities)
+		_ = json.Unmarshal([]byte(ftJSON), &p.Features)
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return out, total, nil
 }

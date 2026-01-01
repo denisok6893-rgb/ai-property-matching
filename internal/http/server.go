@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+        "context"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -14,10 +15,13 @@ import (
 type Server struct {
 	Engine     *matching.Engine
 	Properties []domain.Property
+        PropsRepo  PropertiesRepo
 }
 
 func NewServer(engine *matching.Engine, properties []domain.Property) *Server {
-	return &Server{Engine: engine, Properties: properties}
+    s := &Server{Engine: engine, Properties: properties}
+    s.PropsRepo = &InMemoryPropertiesRepo{S: s}
+    return s
 }
 
 func (s *Server) Routes() http.Handler {
@@ -104,76 +108,33 @@ func (s *Server) handlePropertiesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, offset := parseLimitOffset(r, 20, 0)
+        limit, offset := parseLimitOffset(r, 20, 0)
+        q := r.URL.Query()
 
-	q := r.URL.Query()
+        params := ListParams{
+            Limit:       limit,
+            Offset:      offset,
+            Location:    q.Get("location"),
+            MinPrice:    q.Get("min_price"),
+            MaxPrice:    q.Get("max_price"),
+            MinBedrooms: q.Get("min_bedrooms"),
+            Sort:        q.Get("sort"),
+        }
 
-	location := strings.ToLower(q.Get("location"))
-	minPrice, _ := strconv.ParseFloat(q.Get("min_price"), 64)
-	maxPrice, _ := strconv.ParseFloat(q.Get("max_price"), 64)
-	minBedrooms, _ := strconv.Atoi(q.Get("min_bedrooms"))
-	sortBy := q.Get("sort")
+        repo := s.PropsRepo
+        if repo == nil {
+            repo = &InMemoryPropertiesRepo{S: s}
+        }
 
-	// 1. FILTER
-	filtered := make([]domain.Property, 0, len(s.Properties))
-	for _, p := range s.Properties {
-		if location != "" && !strings.Contains(strings.ToLower(p.Location), location) {
-			continue
-		}
-		if minPrice > 0 && p.Price < minPrice {
-			continue
-		}
-		if maxPrice > 0 && p.Price > maxPrice {
-			continue
-		}
-		if minBedrooms > 0 && p.Bedrooms < minBedrooms {
-			continue
-		}
-		filtered = append(filtered, p)
-	}
+        items, total := repo.List(r.Context(), params)
 
-	// 2. SORT
-	switch sortBy {
-	case "price_asc":
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].Price < filtered[j].Price
-		})
-	case "price_desc":
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].Price > filtered[j].Price
-		})
-	}
+        writeJSON(w, http.StatusOK, PropertiesListResponse{
+            Limit:  limit,
+            Offset: offset,
+            Total:  total,
+            Items:  items,
+        })
 
-	// 3. PAGINATION
-	total := len(filtered)
-	if offset > total {
-		offset = total
-	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-
-	items := make([]PropertySummary, 0, end-offset)
-	for _, p := range filtered[offset:end] {
-		items = append(items, PropertySummary{
-			ID:        p.ID,
-			Title:     p.Title,
-			Location:  p.Location,
-			Price:     p.Price,
-			Bedrooms:  p.Bedrooms,
-			Bathrooms: p.Bathrooms,
-			AreaSQM:   p.AreaSQM,
-			Amenities: p.Amenities,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, PropertiesListResponse{
-		Limit:  limit,
-		Offset: offset,
-		Total:  total,
-		Items:  items,
-	})
 }
 
 func (s *Server) handlePropertiesGetByID(w http.ResponseWriter, r *http.Request) {
@@ -654,3 +615,80 @@ loadProperties();
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(html))
 }
+
+type ListParams struct {
+    Limit       int
+    Offset      int
+    Location    string
+    MinPrice    string
+    MaxPrice    string
+    MinBedrooms string
+    Sort        string
+}
+
+type PropertiesRepo interface {
+    List(ctx context.Context, p ListParams) ([]PropertySummary, int)
+}
+
+type InMemoryPropertiesRepo struct {
+    S *Server
+}
+
+func (r *InMemoryPropertiesRepo) List(ctx context.Context, p ListParams) ([]PropertySummary, int) {
+    location := strings.ToLower(p.Location)
+    minPrice, _ := strconv.ParseFloat(p.MinPrice, 64)
+    maxPrice, _ := strconv.ParseFloat(p.MaxPrice, 64)
+    minBedrooms, _ := strconv.Atoi(p.MinBedrooms)
+
+    filtered := make([]domain.Property, 0, len(r.S.Properties))
+    for _, prop := range r.S.Properties {
+        if location != "" && !strings.Contains(strings.ToLower(prop.Location), location) {
+            continue
+        }
+        if minPrice > 0 && prop.Price < minPrice {
+            continue
+        }
+        if maxPrice > 0 && prop.Price > maxPrice {
+            continue
+        }
+        if minBedrooms > 0 && prop.Bedrooms < minBedrooms {
+            continue
+        }
+        filtered = append(filtered, prop)
+    }
+
+    switch p.Sort {
+    case "price_asc":
+        sort.Slice(filtered, func(i, j int) bool { return filtered[i].Price < filtered[j].Price })
+    case "price_desc":
+        sort.Slice(filtered, func(i, j int) bool { return filtered[i].Price > filtered[j].Price })
+    }
+
+    total := len(filtered)
+    offset := p.Offset
+    limit := p.Limit
+    if offset > total {
+        offset = total
+    }
+    end := offset + limit
+    if end > total {
+        end = total
+    }
+
+    items := make([]PropertySummary, 0, end-offset)
+    for _, prop := range filtered[offset:end] {
+        items = append(items, PropertySummary{
+            ID:        prop.ID,
+            Title:     prop.Title,
+            Location:  prop.Location,
+            Price:     prop.Price,
+            Bedrooms:  prop.Bedrooms,
+            Bathrooms: prop.Bathrooms,
+            AreaSQM:   prop.AreaSQM,
+            Amenities: prop.Amenities,
+        })
+    }
+    return items, total
+}
+	
+

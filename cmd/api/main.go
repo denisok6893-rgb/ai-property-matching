@@ -22,15 +22,16 @@ type Config struct {
 func main() {
 	cfg := loadConfig()
 
-	var (
-		props []domain.Property
-		err   error
-	)
+        var (
+            props []domain.Property
+            err   error
+            store *storage.SQLiteStore
+        )
 
 	switch cfg.Storage {
 	case "sqlite":
 
-		store, err := storage.OpenSQLite(cfg.DBPath)
+		store, err = storage.OpenSQLite(cfg.DBPath)
 		if err != nil {
 			log.Fatalf("open sqlite: %v", err)
 		}
@@ -74,6 +75,9 @@ func main() {
 
 	engine := matching.NewEngine(w)
 	srv := httpapi.NewServer(engine, props)
+        if cfg.Storage == "sqlite" && store != nil {
+            srv.PropsRepo = &httpapi.SQLitePropertiesRepo{Store: store}
+        }
 
 	log.Printf("API listening on %s", cfg.Address)
 	if err := http.ListenAndServe(cfg.Address, srv.Routes()); err != nil {
