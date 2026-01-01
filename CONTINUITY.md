@@ -51,4 +51,21 @@
 - curl "http://127.0.0.1:8083/properties?min_price=400000"
 - curl "http://127.0.0.1:8083/properties?min_bedrooms=4&sort=price_desc"
 
+## 2026-01-01 — GET /properties: strict query validation
+
+- Добавлена строгая валидация query-параметров в `GET /properties`:
+  - limit: int > 0 (иначе 400 invalid_limit)
+  - offset: int >= 0 (иначе 400 invalid_offset)
+  - sort: только price_asc|price_desc (иначе 400 invalid_sort)
+  - min_price/max_price: float >= 0 (иначе 400 invalid_min_price / invalid_max_price)
+  - min_bedrooms: int >= 0 (иначе 400 invalid_min_bedrooms)
+  - проверка min_price <= max_price (иначе 400 min_price_gt_max_price)
+- Контракт успешных ответов не изменён, добавлены только 400 для мусорных входов.
+
+Проверка:
+- go test ./...
+- curl -i "http://127.0.0.1:8083/properties?min_price=abc"
+- curl -i "http://127.0.0.1:8083/properties?sort=bad"
+- curl -i "http://127.0.0.1:8083/properties?limit=-1"
+- curl -i "http://127.0.0.1:8083/properties?min_price=10&max_price=1"
 
