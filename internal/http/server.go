@@ -108,17 +108,84 @@ func (s *Server) handlePropertiesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-        limit, offset := parseLimitOffset(r, 20, 0)
         q := r.URL.Query()
+
+        // strict limit/offset validation
+        limit := 20
+        if v := q.Get("limit"); v != "" {
+            n, err := strconv.Atoi(v)
+            if err != nil || n <= 0 {
+                writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_limit"})
+                return
+            }
+            limit = n
+        }
+
+        offset := 0
+        if v := q.Get("offset"); v != "" {
+            n, err := strconv.Atoi(v)
+            if err != nil || n < 0 {
+                writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_offset"})
+                return
+            }
+            offset = n
+        }
+
+        // strict filters validation (accept empty = not set)
+        location := q.Get("location")
+
+        minPriceStr := q.Get("min_price")
+        maxPriceStr := q.Get("max_price")
+        minBedroomsStr := q.Get("min_bedrooms")
+        sortBy := q.Get("sort")
+
+        if sortBy != "" && sortBy != "price_asc" && sortBy != "price_desc" {
+            writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_sort"})
+            return
+        }
+
+        var minPrice, maxPrice float64
+        var minBedrooms int
+        var err error
+
+        if minPriceStr != "" {
+            minPrice, err = strconv.ParseFloat(minPriceStr, 64)
+            if err != nil || minPrice < 0 {
+                writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_min_price"})
+                return
+            }
+        }
+
+        if maxPriceStr != "" {
+            maxPrice, err = strconv.ParseFloat(maxPriceStr, 64)
+            if err != nil || maxPrice < 0 {
+                writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_max_price"})
+                return
+            }
+        }
+
+        if minPriceStr != "" && maxPriceStr != "" && minPrice > maxPrice {
+            writeJSON(w, http.StatusBadRequest, map[string]string{"error": "min_price_gt_max_price"})
+            return
+        }
+
+        if minBedroomsStr != "" {
+            minBedrooms, err = strconv.Atoi(minBedroomsStr)
+            if err != nil || minBedrooms < 0 {
+                writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_min_bedrooms"})
+                return
+            }
+        }
 
         params := ListParams{
             Limit:       limit,
             Offset:      offset,
-            Location:    q.Get("location"),
-            MinPrice:    q.Get("min_price"),
-            MaxPrice:    q.Get("max_price"),
-            MinBedrooms: q.Get("min_bedrooms"),
-            Sort:        q.Get("sort"),
+            Location:    location,
+            MinPrice:    minPriceStr,
+            MaxPrice:    maxPriceStr,
+            MinBedrooms: minBedroomsStr,
+            Sort:        sortBy,
+        
         }
 
         repo := s.PropsRepo
